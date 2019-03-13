@@ -1,9 +1,11 @@
 #! /usr/bin/env node
 const fs = require('fs')
 const os = require('os')
+const url = require('url')
 const tmp = require('tmp')
 const path = require('path')
 const program = require('commander')
+const WebSocket = require('ws')
 const request = require('request')
 const readlineSync = require('readline-sync')
 const { spawn, execFileSync } = require('child_process')
@@ -884,6 +886,37 @@ program
     })
     .action((jobNumber, options) => {
         showLog(jobNumber)
+    })
+
+program
+    .command('exec <jobNumber> <command>')
+    .description('execute command within a job\'s worker instance')
+    .on('--help', function() {
+        printIntro()
+        printExample('pit exec 1234 bash')
+        printExample('pit exec 1234 "ls -la /"')
+        printLine()
+    })
+    .action((jobNumber, command, options) => {
+        let instance = '0'
+        getConnectionSettings(connection => {
+            let endpoint = url.parse(connection.url)
+            if (endpoint.protocol == 'https:') {
+                endpoint.protocol = 'wss'
+            } else {
+                endpoint.protocol = 'ws'
+            }
+            endpoint = url.format(endpoint)
+            console.log(endpoint)
+            let ws = new WebSocket(endpoint + 'jobs/' + jobNumber + '/instances/' + instance + '/exec?cmd=' + encodeURIComponent(command), {
+                headers: { 'X-Auth-Token': connection.token },
+                ca: connection.ca
+            })
+            ws.on('error', err => fail('Problem opening connection to pit: ' + err))
+            ws.on('message', data => process.stdout.write(data))
+            ws.on('close', () => process.exit(0))
+            process.stdin.on('data', data => ws.send(data))
+        })
     })
 
 program
