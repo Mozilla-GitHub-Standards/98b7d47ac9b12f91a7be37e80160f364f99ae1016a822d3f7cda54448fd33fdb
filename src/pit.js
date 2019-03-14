@@ -894,7 +894,7 @@ program
     .on('--help', function() {
         printIntro()
         printExample('pit exec 1234 bash')
-        printExample('pit exec 1234 "ls -la /"')
+        printExample('pit exec 1234 ls -la /')
         printLine()
     })
     .action((jobNumber, command, options) => {
@@ -907,15 +907,23 @@ program
                 endpoint.protocol = 'ws'
             }
             endpoint = url.format(endpoint)
-            console.log(endpoint)
             let ws = new WebSocket(endpoint + 'jobs/' + jobNumber + '/instances/' + instance + '/exec?cmd=' + encodeURIComponent(command), {
                 headers: { 'X-Auth-Token': connection.token },
                 ca: connection.ca
             })
+            let stdout = process.stdout
+            let stdin = process.stdin
+            stdin.setRawMode(true)
+            stdin.resume()
+            stdin.on('data', data => {
+                if ( data === '\u0003' ) {
+                    process.exit()
+                }
+                ws.send(data)
+            })
+            ws.on('message', data => stdout.write(data))
             ws.on('error', err => fail('Problem opening connection to pit: ' + err))
-            ws.on('message', data => process.stdout.write(data))
             ws.on('close', () => process.exit(0))
-            process.stdin.on('data', data => ws.send(data))
         })
     })
 
